@@ -1,3 +1,20 @@
+## About this fork
+
+This is a contribution fork of [UltiMafia](https://github.com/UltiMafia/Ultimafia), not the deployed site.
+
+The current contributions are on separate branches:
+
+- [Paste images into comments](https://github.com/UltiMafia/Ultimafia/pull/3131).
+- [Inline forum replies and image paste](https://github.com/UltiMafia/Ultimafia/pull/3132).
+- [Make the Markdown editor follow the site's font size](https://github.com/UltiMafia/Ultimafia/pull/3133).
+- [Add the missing phone policy links](https://github.com/UltiMafia/Ultimafia/pull/3134).
+- [Keep the in-game warning clear of phone pagination](https://github.com/UltiMafia/Ultimafia/pull/3135).
+- [Keep the expanded game settings footer reachable](https://github.com/UltiMafia/Ultimafia/pull/3136).
+
+Each pull request records its checks and remaining limits. These changes are not all in this fork's default branch, and a published pull request does not mean the change is running on the site. The layout fixes are individual changes, not a completed site-wide scaling overhaul.
+
+The upstream project documentation follows.
+
 # UltiMafia
 
 This is the source code powering [UltiMafia.com](https://ultimafia.com), a website built to provide online chat mafia to all.
