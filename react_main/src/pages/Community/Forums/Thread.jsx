@@ -132,8 +132,10 @@ export default function Thread(props) {
   const [threadInfo, setThreadInfo] = useState({});
   const [loaded, setLoaded] = useState(false);
   const [redirect, setRedirect] = useState();
-  const [showReplyForm, setShowReplyForm] = useState(false);
+  // Where the reply box sits: a reply's id, "thread" or "bottom"; null is closed.
+  const [replyTarget, setReplyTarget] = useState(null);
   const [replyContent, setReplyContent] = useState("");
+  const [posting, setPosting] = useState(false);
   const [page, setPage] = useState(1);
   const [scrolled, setScrolled] = useState(false);
   const [newRosterUsername, setNewRosterUsername] = useState("");
@@ -147,6 +149,8 @@ export default function Thread(props) {
 
   const replyFormRef = useRef();
   const { threadId } = useParams();
+  const currentThreadId = useRef(threadId);
+  currentThreadId.current = threadId;
   const location = useLocation();
   const user = useContext(UserContext);
   const errorAlert = useErrorAlert();
@@ -158,6 +162,9 @@ export default function Thread(props) {
   }, []);
 
   useEffect(() => {
+    setReplyTarget(null);
+    setReplyContent("");
+
     // If there's a specific reply to view, load that; otherwise load the last page
     const replyParam = params.get("reply") || "";
     const url = replyParam
@@ -214,13 +221,15 @@ export default function Thread(props) {
   }, [loaded, threadInfo]);
 
   useEffect(() => {
-    if (showReplyForm) replyFormRef.current.scrollIntoView();
-  }, [showReplyForm]);
+    if (!replyTarget) return;
+    replyFormRef.current.scrollIntoView({ block: "nearest" });
+    replyFormRef.current.querySelector("textarea")?.focus({ preventScroll: true });
+  }, [replyTarget]);
 
-  function onReplyClick(reply) {
-    if (threadInfo.locked && !user.perms.postInLocked) return;
+  function onReplyClick(reply, placement) {
+    if (posting || (threadInfo.locked && !user.perms.postInLocked)) return;
 
-    setShowReplyForm(true);
+    setReplyTarget(reply ? reply.id : placement);
 
     if (reply) {
       const profilePath = reply.author.vanityUrl
@@ -235,28 +244,35 @@ export default function Thread(props) {
       newContent = `${newContent}${quotedContent.join("\n")}\n\n`;
       setReplyContent(newContent);
     }
-
-    if (showReplyForm) replyFormRef.current.scrollIntoView();
   }
 
   function onPostReply() {
+    if (posting) return;
+    setPosting(true);
+
     axios
       .post(`/api/forums/reply`, {
         thread: threadInfo.id,
         content: replyContent,
       })
       .then((res) => {
+        // Changing pages does not interrupt the post; changing threads already
+        // closed this draft.
+        if (currentThreadId.current !== threadId) return;
+
         onThreadPageNav(Number(res.data));
         setReplyContent("");
-        setShowReplyForm(false);
+        setReplyTarget(null);
 
         document.body.scrollTop = document.body.scrollHeight;
       })
-      .catch(errorAlert);
+      .catch(errorAlert)
+      .finally(() => setPosting(false));
   }
 
   function onPostCancel() {
-    setShowReplyForm(false);
+    if (posting) return;
+    setReplyTarget(null);
     setReplyContent("");
   }
 
@@ -621,26 +637,54 @@ function onAddTag(targetUserId) {
     !isMuted &&
     (!threadInfo.restricted || isAuthor || threadInfo.isAllowedPoster);
 
+  const replyForm = replyTarget && (
+    <div className="reply-form-wrapper" ref={replyFormRef}>
+      <div className="reply-form span-panel">
+        <MentionEditor
+          value={replyContent}
+          onChange={setReplyContent}
+          rosterUsers={threadInfo.rosterUsers}
+          mentionTagMap={mentionTagMap}
+        />
+        <div className="post-btn-wrapper">
+          <div className="post-reply btn btn-theme" onClick={onPostReply}>
+            {posting ? "Posting..." : "Post"}
+          </div>
+          <div className="btn btn-theme-sec" onClick={onPostCancel}>
+            Cancel
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  // The draft survives its reply leaving the page: the box drops to the bottom.
+  const replyFormAtBottom =
+    replyTarget !== "thread" &&
+    !threadInfo.replies.some((reply) => reply.id === replyTarget);
+
   const replies = threadInfo.replies.map((reply) => (
-    <Post
-      className={`reply ${reply.id === params.get("reply") ? "sel" : ""}`}
-      id={`reply-${reply.id}`}
-      key={reply.id}
-      postInfo={reply}
-      itemType="reply"
-      voteItem={reply}
-      voteItemHolder={threadInfo}
-      setVoteItemHolder={setThreadInfo}
-      itemKey="replies"
-      locked={threadInfo.locked}
-      canReply={canReply}
-      permaLink={`/community/forums/thread/${threadId}?reply=${reply.id}`}
-      onReplyClick={() => onReplyClick(reply)}
-      onDelete={() => onThreadPageNav(page)}
-      onRestore={() => onThreadPageNav(page)}
-      onEdit={() => onThreadPageNav(page)}
-      mentionTags={mentionTagMap}
-    />
+    <React.Fragment key={reply.id}>
+      <Post
+        className={`reply ${reply.id === params.get("reply") ? "sel" : ""}`}
+        id={`reply-${reply.id}`}
+        postInfo={reply}
+        itemType="reply"
+        voteItem={reply}
+        voteItemHolder={threadInfo}
+        setVoteItemHolder={setThreadInfo}
+        itemKey="replies"
+        locked={threadInfo.locked}
+        canReply={canReply}
+        permaLink={`/community/forums/thread/${threadId}?reply=${reply.id}`}
+        onReplyClick={() => onReplyClick(reply)}
+        onDelete={() => onThreadPageNav(page)}
+        onRestore={() => onThreadPageNav(page)}
+        onEdit={() => onThreadPageNav(page)}
+        mentionTags={mentionTagMap}
+      />
+      {replyTarget === reply.id && replyForm}
+    </React.Fragment>
   ));
 
   return (
@@ -654,7 +698,7 @@ function onAddTag(targetUserId) {
             setVoteItemHolder={setThreadInfo}
             locked={threadInfo.locked}
             canReply={canReply}
-            onReplyClick={() => onReplyClick()}
+            onReplyClick={() => onReplyClick(null, "thread")}
             onDelete={onThreadDeleted}
             onRestore={() => onThreadPageNav(page)}
             onEdit={() => onThreadPageNav(page)}
@@ -665,6 +709,7 @@ function onAddTag(targetUserId) {
             mentionTags={mentionTagMap}
             hasTitle
           />
+          {replyTarget === "thread" && replyForm}
         </div>
         {(((threadInfo.rosterUsers || []).length > 0 || threadInfo.restricted) ||
           threadInfo.petition) && (
@@ -970,26 +1015,6 @@ function onAddTag(targetUserId) {
         )}
       </div>
       <ThreadPoll threadId={threadId} locked={threadInfo.locked} />
-      <div className="reply-form-wrapper" ref={replyFormRef}>
-        {showReplyForm && (
-          <div className="reply-form span-panel">
-            <MentionEditor
-              value={replyContent}
-              onChange={setReplyContent}
-              rosterUsers={threadInfo.rosterUsers}
-              mentionTagMap={mentionTagMap}
-            />
-            <div className="post-btn-wrapper">
-              <div className="post-reply btn btn-theme" onClick={onPostReply}>
-                Post
-              </div>
-              <div className="btn btn-theme-sec" onClick={onPostCancel}>
-                Cancel
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
       <div className="replies-wrapper">
         <PageNav
           inverted
@@ -1014,13 +1039,14 @@ function onAddTag(targetUserId) {
               <Button
                 variant="contained"
                 color="primary"
-                onClick={() => onReplyClick()}
+                onClick={() => onReplyClick(null, "bottom")}
                 sx={{ minWidth: "120px" }}
               >
                 Reply
               </Button>
             </div>
           )}
+        {replyFormAtBottom && replyForm}
         {isMuted && (
           <div className="restricted-notice muted-notice">
             <i className="fas fa-volume-mute" /> You have been muted in this thread.
