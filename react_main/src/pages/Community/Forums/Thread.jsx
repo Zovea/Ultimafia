@@ -82,7 +82,7 @@ function MentionEditor({ value, onChange, rosterUsers, mentionTagMap }) {
 
   return (
     <div className="mention-autocomplete-wrapper" ref={editorRef}>
-      <TextEditor value={value} onChange={onChange} />
+      <TextEditor value={value} onChange={onChange} pasteImages />
       <div className="mention-picker-row">
         <button
           className="mention-ping-btn"
