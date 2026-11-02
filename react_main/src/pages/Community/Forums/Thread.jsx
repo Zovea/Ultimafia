@@ -223,7 +223,9 @@ export default function Thread(props) {
   useEffect(() => {
     if (!replyTarget) return;
     replyFormRef.current.scrollIntoView({ block: "nearest" });
-    replyFormRef.current.querySelector("textarea")?.focus({ preventScroll: true });
+    const textarea = replyFormRef.current.querySelector("textarea");
+    textarea?.focus({ preventScroll: true });
+    textarea?.setSelectionRange(textarea.value.length, textarea.value.length);
   }, [replyTarget]);
 
   function onReplyClick(reply, placement) {
