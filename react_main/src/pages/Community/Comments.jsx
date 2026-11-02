@@ -193,7 +193,7 @@ export default function Comments(props) {
             }}
           >
             <Stack direction="column" spacing={1} sx={{ flex: "1" }}>
-              <TextEditor value={postContent} onChange={setPostContent} />
+              <TextEditor value={postContent} onChange={setPostContent} pasteImages />
               <Stack direction="row" spacing={1}>
                 <Button
                   variant="outlined"

@@ -1339,6 +1339,19 @@ export function UserSearchSelect(props) {
 
 export function TextEditor(props) {
   const [tab, setTab] = useState("write");
+  const errorAlert = useErrorAlert();
+
+  async function* saveImage(data, file) {
+    const body = new FormData();
+    body.append("image", file);
+    try {
+      const res = await axios.post("/api/comment/image", body);
+      yield res.data;
+    } catch (e) {
+      // Finishing without a path makes the editor remove its placeholder.
+      errorAlert(e);
+    }
+  }
 
   return (
     <ReactMde
@@ -1352,6 +1365,7 @@ export function TextEditor(props) {
       }
       suggestionTriggerCharacters={props.suggestionTriggerCharacters}
       loadSuggestions={props.loadSuggestions}
+      paste={props.pasteImages ? { saveImage } : undefined}
     />
   );
 }
