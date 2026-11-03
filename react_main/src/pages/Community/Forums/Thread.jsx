@@ -38,7 +38,7 @@ function getFirstDateValue(author, keys) {
   return null;
 }
 
-function MentionEditor({ value, onChange, rosterUsers, mentionTagMap }) {
+function MentionEditor({ value, onChange, rosterUsers, mentionTagMap, readOnly }) {
   const editorRef = useRef(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerQuery, setPickerQuery] = useState("");
@@ -82,11 +82,12 @@ function MentionEditor({ value, onChange, rosterUsers, mentionTagMap }) {
 
   return (
     <div className="mention-autocomplete-wrapper" ref={editorRef}>
-      <TextEditor value={value} onChange={onChange} pasteImages />
+      <TextEditor value={value} onChange={onChange} pasteImages readOnly={readOnly} />
       <div className="mention-picker-row">
         <button
           className="mention-ping-btn"
           type="button"
+          disabled={readOnly}
           onClick={() => { setPickerOpen((o) => !o); setPickerQuery(""); }}
         >
           <i className="fas fa-at" /> Ping
@@ -647,6 +648,7 @@ function onAddTag(targetUserId) {
           onChange={setReplyContent}
           rosterUsers={threadInfo.rosterUsers}
           mentionTagMap={mentionTagMap}
+          readOnly={posting}
         />
         <div className="post-btn-wrapper">
           <div className="post-reply btn btn-theme" onClick={onPostReply}>

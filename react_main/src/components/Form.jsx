@@ -1365,7 +1365,8 @@ export function TextEditor(props) {
       }
       suggestionTriggerCharacters={props.suggestionTriggerCharacters}
       loadSuggestions={props.loadSuggestions}
-      paste={props.pasteImages ? { saveImage } : undefined}
+      paste={props.pasteImages && !props.readOnly ? { saveImage } : undefined}
+      readOnly={props.readOnly}
     />
   );
 }
