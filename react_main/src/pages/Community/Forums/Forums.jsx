@@ -1,10 +1,14 @@
 import React, {
   useReducer,
   useState,
+  useRef,
+  useContext,
+  useEffect,
 } from "react";
 import { NavLink, Routes, Route } from "react-router-dom";
 import { ViewNavigate as Navigate } from "hooks/useViewActivity";
 
+import { UserContext } from "Contexts";
 import Categories from "./Categories";
 import Board from "./Board";
 import Thread from "./Thread";
@@ -16,6 +20,18 @@ import "css/forums.css";
 import { Button } from "@mui/material";
 
 export default function Forums() {
+  const user = useContext(UserContext);
+  const replyOwner = user.loggedIn ? user.id : null;
+  // Submitted drafts outlive Thread when navigating through a board or search.
+  const replySubmissions = useRef({ userId: replyOwner, entries: new Map() });
+  if (replySubmissions.current.userId !== replyOwner) {
+    replySubmissions.current.entries.clear();
+    replySubmissions.current.userId = replyOwner;
+  }
+  useEffect(() => () => {
+    replySubmissions.current.entries.clear();
+    replySubmissions.current.userId = null;
+  }, []);
   const [forumNavInfo, updateForumNavInfo] = useForumNavInfo();
   const [searchDialogOpen, setSearchDialogOpen] = useState(false);
   const [moderationDrawerOpen, setModerationDrawerOpen] = useState(false);
@@ -42,7 +58,13 @@ export default function Forums() {
         />
         <Route
           path="thread/:threadId"
-          element={<Thread updateForumNavInfo={updateForumNavInfo} />}
+          element={
+            <Thread
+              key={replyOwner}
+              updateForumNavInfo={updateForumNavInfo}
+              replySubmissions={replySubmissions.current}
+            />
+          }
         />
         <Route
           path="search"

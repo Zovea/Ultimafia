@@ -11,6 +11,7 @@ import { Time, filterProfanity } from "components/Basic";
 import { PageNav } from "components/Nav";
 import { TextEditor } from "components/Form";
 import { UserContext } from "Contexts";
+import { LatestRequest } from "lib/latestRequest";
 import { ThreadSkeleton } from "components/Skeletons";
 import { ThreadPoll } from "components/Poll";
 
@@ -38,10 +39,19 @@ function getFirstDateValue(author, keys) {
   return null;
 }
 
-function MentionEditor({ value, onChange, rosterUsers, mentionTagMap, readOnly }) {
+function MentionEditor({ value, onChange, rosterUsers, mentionTagMap, readOnly, onImageUploadStart }) {
   const editorRef = useRef(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerQuery, setPickerQuery] = useState("");
+  const locked = useRef(readOnly);
+  locked.current = readOnly;
+
+  useEffect(() => {
+    if (readOnly) {
+      setPickerOpen(false);
+      setPickerQuery("");
+    }
+  }, [readOnly]);
 
   const allCandidates = [
     ...mentionTagMap.map((t) => ({ type: "tag", name: t.text, color: t.color })),
@@ -57,6 +67,7 @@ function MentionEditor({ value, onChange, rosterUsers, mentionTagMap, readOnly }
     : allCandidates;
 
   function insertAtCursor(text) {
+    if (locked.current) return;
     const ta = editorRef.current?.querySelector("textarea");
     const pos = ta ? ta.selectionStart : value.length;
     const next = value.slice(0, pos) + text + " " + value.slice(pos);
@@ -82,24 +93,31 @@ function MentionEditor({ value, onChange, rosterUsers, mentionTagMap, readOnly }
 
   return (
     <div className="mention-autocomplete-wrapper" ref={editorRef}>
-      <TextEditor value={value} onChange={onChange} pasteImages readOnly={readOnly} />
+      <TextEditor value={value} onChange={onChange} pasteImages readOnly={readOnly}
+        onImageUploadStart={onImageUploadStart} />
       <div className="mention-picker-row">
         <button
           className="mention-ping-btn"
           type="button"
           disabled={readOnly}
-          onClick={() => { setPickerOpen((o) => !o); setPickerQuery(""); }}
+          onClick={() => {
+            if (locked.current) return;
+            setPickerOpen((o) => !o);
+            setPickerQuery("");
+          }}
         >
           <i className="fas fa-at" /> Ping
         </button>
-        {pickerOpen && (
+        {pickerOpen && !readOnly && (
           <div className="mention-dropdown">
             <input
               className="mention-search"
               autoFocus
               placeholder="Search..."
               value={pickerQuery}
-              onChange={(e) => setPickerQuery(e.target.value)}
+              onChange={(e) => {
+                if (!locked.current) setPickerQuery(e.target.value);
+              }}
             />
             {filtered.length === 0 && (
               <div className="mention-no-results">No matches</div>
@@ -137,6 +155,8 @@ export default function Thread(props) {
   const [replyTarget, setReplyTarget] = useState(null);
   const [replyContent, setReplyContent] = useState("");
   const [posting, setPosting] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [postAttempt, setPostAttempt] = useState(null);
   const [page, setPage] = useState(1);
   const [scrolled, setScrolled] = useState(false);
   const [newRosterUsername, setNewRosterUsername] = useState("");
@@ -150,21 +170,54 @@ export default function Thread(props) {
 
   const replyFormRef = useRef();
   const { threadId } = useParams();
-  const currentThreadId = useRef(threadId);
-  currentThreadId.current = threadId;
+  const mounted = useRef(true);
+  const displayedThreadId = useRef();
+  displayedThreadId.current = loaded ? threadInfo.id : null;
+  const replySubmissions = props.replySubmissions;
   const location = useLocation();
   const user = useContext(UserContext);
+  const visit = useMemo(() => ({}), [threadId, user.id, user.loggedIn]);
+  const imageUploads = useMemo(() => ({ count: 0 }), [visit]);
+  const currentVisit = useRef(visit);
+  currentVisit.current = visit;
+  const threadRequest = useMemo(() => new LatestRequest(), [visit]);
   const errorAlert = useErrorAlert();
 
   const params = new URLSearchParams(location.search);
 
   useEffect(() => {
     document.title = "Forums | UltiMafia";
+    return () => { mounted.current = false; };
   }, []);
 
+  // Capture before effects: a fast success may remove the recovery entry first.
+  const submission = replySubmissions.entries.get(threadId) ||
+    (postAttempt?.visit === visit ? postAttempt : null);
   useEffect(() => {
-    setReplyTarget(null);
-    setReplyContent("");
+    const owned = submission && submission.userId === user.id && user.loggedIn;
+    setUploadingImage(imageUploads.count > 0);
+    setReplyContent(owned ? submission.content : "");
+    setReplyTarget(owned ? submission.target : null);
+    setPosting(Boolean(owned && submission.status === "pending"));
+    if (!owned) return;
+
+    let active = true;
+    submission.promise.then((postedPage) => {
+      if (!active || currentVisit.current !== visit ||
+          replySubmissions.userId !== submission.userId) return;
+      setPosting(false);
+      if (submission.status !== "posted") return;
+      setReplyContent("");
+      setReplyTarget(null);
+      onThreadPageNav(postedPage);
+      document.body.scrollTop = document.body.scrollHeight;
+    });
+    return () => { active = false; };
+  }, [visit, postAttempt]);
+
+  useEffect(() => {
+    const request = threadRequest.begin();
+    setLoaded(false);
 
     // If there's a specific reply to view, load that; otherwise load the last page
     const replyParam = params.get("reply") || "";
@@ -173,8 +226,9 @@ export default function Thread(props) {
       : `/api/forums/thread/${threadId}?page=last`;
 
     axios
-      .get(url)
+      .get(url, { signal: request.signal })
       .then((res) => {
+        if (!request.isCurrent() || currentVisit.current !== visit) return;
         res.data.content = filterProfanity(
           res.data.content,
           user.settings,
@@ -197,10 +251,12 @@ export default function Thread(props) {
         });
       })
       .catch((e) => {
+        if (!request.isCurrent() || currentVisit.current !== visit) return;
         errorAlert(e);
         setRedirect("/community/forums");
       });
-  }, [threadId]);
+    return () => threadRequest.invalidate();
+  }, [threadId, user.id, user.loggedIn]);
 
   useEffect(() => {
     if (loaded) {
@@ -222,16 +278,21 @@ export default function Thread(props) {
   }, [loaded, threadInfo]);
 
   useEffect(() => {
-    if (!replyTarget) return;
+    if (!replyTarget || !replyFormRef.current) return;
     replyFormRef.current.scrollIntoView({ block: "nearest" });
     const textarea = replyFormRef.current.querySelector("textarea");
     textarea?.focus({ preventScroll: true });
     textarea?.setSelectionRange(textarea.value.length, textarea.value.length);
-  }, [replyTarget]);
+  }, [replyTarget, loaded]);
 
   function onReplyClick(reply, placement) {
     if (posting || (threadInfo.locked && !user.perms.postInLocked)) return;
 
+    const failedSubmission = replySubmissions.entries.get(threadId);
+    if (failedSubmission?.status === "failed") {
+      if (reply) replySubmissions.entries.delete(threadId);
+      else failedSubmission.target = placement;
+    }
     setReplyTarget(reply ? reply.id : placement);
 
     if (reply) {
@@ -249,40 +310,69 @@ export default function Thread(props) {
     }
   }
 
-  function onPostReply() {
-    if (posting) return;
-    setPosting(true);
+  function onImageUploadStart() {
+    imageUploads.count++;
+    setUploadingImage(true);
+    return () => {
+      imageUploads.count--;
+      if (mounted.current && currentVisit.current === visit)
+        setUploadingImage(imageUploads.count > 0);
+    };
+  }
 
-    axios
+  function onPostReply() {
+    if (imageUploads.count > 0 || posting ||
+        replySubmissions.entries.get(threadId)?.status === "pending") return;
+    const submission = {
+      visit,
+      userId: user.id,
+      content: replyContent,
+      target: replyTarget,
+      status: "pending",
+    };
+    replySubmissions.entries.set(threadId, submission);
+    submission.promise = axios
       .post(`/api/forums/reply`, {
-        thread: threadInfo.id,
-        content: replyContent,
+        thread: threadId,
+        content: submission.content,
       })
       .then((res) => {
-        // Changing pages does not interrupt the post; changing threads already
-        // closed this draft.
-        if (currentThreadId.current !== threadId) return;
-
-        onThreadPageNav(Number(res.data));
-        setReplyContent("");
-        setReplyTarget(null);
-
-        document.body.scrollTop = document.body.scrollHeight;
+        submission.status = "posted";
+        if (replySubmissions.entries.get(threadId) === submission)
+          replySubmissions.entries.delete(threadId);
+        return Number(res.data);
       })
-      .catch(errorAlert)
-      .finally(() => setPosting(false));
+      .catch((e) => {
+        submission.status = "failed";
+        // Report once even if Thread was unmounted; never alert another account.
+        if (replySubmissions.userId === submission.userId &&
+            replySubmissions.entries.get(threadId) === submission) errorAlert(e);
+      });
+    setPosting(true);
+    setPostAttempt(submission);
+  }
+
+  function onReplyChange(content) {
+    if (!mounted.current || currentVisit.current !== visit ||
+        replySubmissions.userId !== user.id) return;
+    const submission = replySubmissions.entries.get(threadId);
+    if (submission?.status === "failed") replySubmissions.entries.delete(threadId);
+    setReplyContent(content);
   }
 
   function onPostCancel() {
     if (posting) return;
+    replySubmissions.entries.delete(threadId);
     setReplyTarget(null);
     setReplyContent("");
   }
 
   function onThreadPageNav(page) {
+    const request = threadRequest.begin();
     axios
-      .get(`/api/forums/thread/${threadId}?page=${page}`)
+      .get(`/api/forums/thread/${threadId}?page=${page}`, { signal: request.signal })
       .then((res) => {
+        if (!request.isCurrent() || currentVisit.current !== visit) return;
         res.data.content = filterProfanity(
           res.data.content,
           user.settings,
@@ -294,8 +384,13 @@ export default function Thread(props) {
 
         setPage(page);
         setThreadInfo(res.data);
+        setLoaded(true);
       })
-      .catch(errorAlert);
+      .catch((e) => {
+        if (!request.isCurrent() || currentVisit.current !== visit) return;
+        errorAlert(e);
+        if (displayedThreadId.current !== threadId) setRedirect("/community/forums");
+      });
   }
 
   function onThreadDeleted() {
@@ -700,21 +795,23 @@ function onAddTag(targetUserId) {
 
   if (redirect) return <Navigate to={redirect} />;
 
-  if (!loaded) return <ThreadSkeleton />;
+  if (!loaded || threadInfo.id !== threadId) return <ThreadSkeleton />;
 
   const replyForm = replyTarget && (
     <div className="reply-form-wrapper" ref={replyFormRef}>
       <div className="reply-form span-panel">
         <MentionEditor
           value={replyContent}
-          onChange={setReplyContent}
+          onChange={onReplyChange}
+          onImageUploadStart={onImageUploadStart}
           rosterUsers={threadInfo.rosterUsers}
           mentionTagMap={mentionTagMap}
           readOnly={posting}
         />
         <div className="post-btn-wrapper">
-          <div className="post-reply btn btn-theme" onClick={onPostReply}>
-            {posting ? "Posting..." : "Post"}
+          <div className="post-reply btn btn-theme" onClick={onPostReply}
+            aria-disabled={posting || uploadingImage}>
+            {posting ? "Posting..." : uploadingImage ? "Uploading image..." : "Post"}
           </div>
           <div className="btn btn-theme-sec" onClick={onPostCancel}>
             Cancel

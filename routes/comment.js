@@ -124,6 +124,9 @@ router.post("/image", async function (req, res) {
     var form = new formidable();
     form.maxFileSize = 5 * 1024 * 1024;
     form.maxFields = 1;
+    const temporaryPaths = [];
+    form.on("file", (name, file) => temporaryPaths.push(file.path));
+    let parsed = false;
 
     const uploadDir = process.env.UPLOAD_PATH;
     if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
@@ -131,6 +134,7 @@ router.post("/image", async function (req, res) {
 
     try {
       var [fields, files] = await form.parseAsync(req);
+      parsed = true;
 
       await sharp(files.image.path, { limitInputPixels: 16 * 1000 * 1000 })
         .rotate()
@@ -147,6 +151,18 @@ router.post("/image", async function (req, res) {
       logger.warn(e);
       errors.unprocessable(res, "Images must be readable and up to 5 MB.");
       return;
+    } finally {
+      // Formidable owns cleanup while a failed parse may still have open files.
+      if (parsed) {
+        for (const temporaryPath of temporaryPaths) {
+          try {
+            await fs.promises.unlink(temporaryPath);
+          } catch (e) {
+            if (e.code !== "ENOENT")
+              logger.warn("Could not remove temporary pasted image:", e);
+          }
+        }
+      }
     }
 
     res.send(`/uploads/${fileName}`);

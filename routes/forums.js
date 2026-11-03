@@ -1397,7 +1397,7 @@ router.post("/reply", async function (req, res) {
       id: threadId,
       deleted: false,
     })
-      .select("board author replyCount locked replyNotify subscribers restricted roster")
+      .select("board author replyCount locked replyNotify subscribers restricted roster mutedTags")
       .populate("board", "id rank")
       .populate("author", "id");
 
