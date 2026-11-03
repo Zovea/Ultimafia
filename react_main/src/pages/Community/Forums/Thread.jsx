@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useContext } from "react";
+import React, { useState, useEffect, useMemo, useRef, useContext } from "react";
 import axios from "axios";
 import { Link, useParams, useLocation } from "react-router-dom";
 import { ViewNavigate as Navigate } from "hooks/useViewActivity";
@@ -238,14 +238,14 @@ export default function Thread(props) {
       const profilePath = reply.author.vanityUrl
         ? `/user/${reply.author.vanityUrl}`
         : `/user/${reply.author.id}`;
-      var newContent = `${replyContent}\n\n> ##### [${reply.author.name}](${profilePath}) said: [↻](/community/forums/thread/${threadId}?reply=${reply.id})\n`;
+      var newContent = `\n\n> ##### [${reply.author.name}](${profilePath}) said: [↻](/community/forums/thread/${threadId}?reply=${reply.id})\n`;
       var quotedContent = reply.content.split("\n");
 
       for (let i = 0; i < quotedContent.length; i++)
         quotedContent[i] = `> ${quotedContent[i]}`;
 
       newContent = `${newContent}${quotedContent.join("\n")}\n\n`;
-      setReplyContent(newContent);
+      setReplyContent((content) => `${content}${newContent}`);
     }
   }
 
@@ -618,15 +618,11 @@ function onAddTag(targetUserId) {
       .catch(errorAlert);
   }
 
-  if (redirect) return <Navigate to={redirect} />;
-
-  if (!loaded) return <ThreadSkeleton />;
-
   const isAuthor = user.id === threadInfo.author?.id;
   const isMuted = !!threadInfo.isMuted || false;
 
   // Build tag color map from all applied tags across roster users + presets
-  const mentionTagMap = (() => {
+  const mentionTagMap = useMemo(() => {
     const map = {};
     for (const p of (threadInfo.tagPresets || []))
       map[p.text.toLowerCase()] = { text: p.text, color: p.color };
@@ -635,10 +631,76 @@ function onAddTag(targetUserId) {
         if (!map[t.text.toLowerCase()])
           map[t.text.toLowerCase()] = { text: t.text, color: t.color };
     return Object.values(map);
-  })();
+  }, [threadInfo.tagPresets, threadInfo.rosterUsers]);
   const canReply =
     !isMuted &&
     (!threadInfo.restricted || isAuthor || threadInfo.isAllowedPoster);
+
+  // Every key typed in the reply box renders Thread. Keeping these elements
+  // stops each post from rendering its markdown again.
+  const threadPost = useMemo(
+    () =>
+      loaded && (
+        <Post
+          postInfo={threadInfo}
+          itemType="thread"
+          voteItem={threadInfo}
+          setVoteItemHolder={setThreadInfo}
+          locked={threadInfo.locked}
+          canReply={canReply}
+          onReplyClick={() => onReplyClick(null, "thread")}
+          onDelete={onThreadDeleted}
+          onRestore={() => onThreadPageNav(page)}
+          onEdit={() => onThreadPageNav(page)}
+          onNotifyToggled={onNotifyToggled}
+          onPinToggled={onPinToggled}
+          onLockToggled={onLockToggled}
+          onRestrictToggled={onRestrictToggled}
+          mentionTags={mentionTagMap}
+          hasTitle
+        />
+      ),
+    [loaded, threadInfo, canReply, page, posting, threadId, user, mentionTagMap]
+  );
+  const replyPosts = useMemo(
+    () =>
+      loaded &&
+      threadInfo.replies.map((reply) => (
+        <Post
+          className={`reply ${reply.id === params.get("reply") ? "sel" : ""}`}
+          id={`reply-${reply.id}`}
+          postInfo={reply}
+          itemType="reply"
+          voteItem={reply}
+          voteItemHolder={threadInfo}
+          setVoteItemHolder={setThreadInfo}
+          itemKey="replies"
+          locked={threadInfo.locked}
+          canReply={canReply}
+          permaLink={`/community/forums/thread/${threadId}?reply=${reply.id}`}
+          onReplyClick={() => onReplyClick(reply)}
+          onDelete={() => onThreadPageNav(page)}
+          onRestore={() => onThreadPageNav(page)}
+          onEdit={() => onThreadPageNav(page)}
+          mentionTags={mentionTagMap}
+        />
+      )),
+    [
+      loaded,
+      threadInfo,
+      canReply,
+      page,
+      posting,
+      threadId,
+      user,
+      mentionTagMap,
+      location.search,
+    ]
+  );
+
+  if (redirect) return <Navigate to={redirect} />;
+
+  if (!loaded) return <ThreadSkeleton />;
 
   const replyForm = replyTarget && (
     <div className="reply-form-wrapper" ref={replyFormRef}>
@@ -667,26 +729,9 @@ function onAddTag(targetUserId) {
     replyTarget !== "thread" &&
     !threadInfo.replies.some((reply) => reply.id === replyTarget);
 
-  const replies = threadInfo.replies.map((reply) => (
+  const replies = threadInfo.replies.map((reply, i) => (
     <React.Fragment key={reply.id}>
-      <Post
-        className={`reply ${reply.id === params.get("reply") ? "sel" : ""}`}
-        id={`reply-${reply.id}`}
-        postInfo={reply}
-        itemType="reply"
-        voteItem={reply}
-        voteItemHolder={threadInfo}
-        setVoteItemHolder={setThreadInfo}
-        itemKey="replies"
-        locked={threadInfo.locked}
-        canReply={canReply}
-        permaLink={`/community/forums/thread/${threadId}?reply=${reply.id}`}
-        onReplyClick={() => onReplyClick(reply)}
-        onDelete={() => onThreadPageNav(page)}
-        onRestore={() => onThreadPageNav(page)}
-        onEdit={() => onThreadPageNav(page)}
-        mentionTags={mentionTagMap}
-      />
+      {replyPosts[i]}
       {replyTarget === reply.id && replyForm}
     </React.Fragment>
   ));
@@ -695,24 +740,7 @@ function onAddTag(targetUserId) {
     <div className="thread-wrapper">
       <div className="thread-main-row">
         <div className="thread-post-col">
-          <Post
-            postInfo={threadInfo}
-            itemType="thread"
-            voteItem={threadInfo}
-            setVoteItemHolder={setThreadInfo}
-            locked={threadInfo.locked}
-            canReply={canReply}
-            onReplyClick={() => onReplyClick(null, "thread")}
-            onDelete={onThreadDeleted}
-            onRestore={() => onThreadPageNav(page)}
-            onEdit={() => onThreadPageNav(page)}
-            onNotifyToggled={onNotifyToggled}
-            onPinToggled={onPinToggled}
-            onLockToggled={onLockToggled}
-            onRestrictToggled={onRestrictToggled}
-            mentionTags={mentionTagMap}
-            hasTitle
-          />
+          {threadPost}
           {replyTarget === "thread" && replyForm}
         </div>
         {(((threadInfo.rosterUsers || []).length > 0 || threadInfo.restricted) ||
