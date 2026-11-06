@@ -61,7 +61,13 @@ jobs:
       - name: Install Packages
         run: npm install
       - name: Unit Test
-        run: NODE_ENV=test npx mocha --recursive --exit
+        run: |
+          fail=0
+          for f in $(find test -name '*.js' | sort); do
+            echo "=== FILE $f"
+            NODE_ENV=test npx mocha --exit "$f" || fail=1
+          done
+          exit $fail
         env:
           NODE_ENV: development
           PORT: 3000
