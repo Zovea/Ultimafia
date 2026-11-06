@@ -61,7 +61,7 @@ jobs:
       - name: Install Packages
         run: npm install
       - name: Unit Test
-        run: npm run test
+        run: NODE_ENV=test npx mocha --recursive --exit
         env:
           NODE_ENV: development
           PORT: 3000
