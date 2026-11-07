@@ -144,9 +144,9 @@ Now, run the init-letsencrypt.sh script from the top level directory:
    ```bash
    $ curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
    $ source ~/nvm/nvm.sh
-   $ nvm install 22.17.0
-   $ nvm use 22.17.0
-   $ nvm alias default 22.17.0
+   $ nvm install 22.23.4
+   $ nvm use 22.23.4
+   $ nvm alias default 22.23.4
    $ npm install
    ```
 

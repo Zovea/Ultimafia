@@ -91,9 +91,9 @@ echo "Great! Now the rest of this should be automatic… please wait…"
 
 # We use the appropriate Node/NPM versions then install the backend dependencies
 source ~/nvm/nvm.sh
-nvm install 22.17.0
-nvm use 22.17.0
-nvm alias default 22.17.0
+nvm install 22.23.4
+nvm use 22.23.4
+nvm alias default 22.23.4
 npm install
 
 # Download front-end dependencies and build

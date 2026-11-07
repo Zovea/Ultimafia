@@ -1,5 +1,5 @@
 # Use the official Node.js image as the base image
-FROM node:22.17.0
+FROM node:22.23.4
 
 # Set the working directory in the container
 WORKDIR /home/um

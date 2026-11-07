@@ -22,11 +22,11 @@ By default, the spending limit is $0 so you won't be charged. The monthly quota 
 
 <img src="https://github.com/UltiMafia/Ultimafia/assets/24848927/37830841-818e-4f81-8e57-b3397215e7cb" alt="create codespace" width="700"/>
 
-2. Configure node in the codespace terminal. For consistency, this project uses `22.17.0`.
+2. Configure node in the codespace terminal. For consistency, this project uses `22.23.4`.
 
 ```
-nvm install 22.17.0
-nvm alias default 22.17.0
+nvm install 22.23.4
+nvm alias default 22.23.4
 ```
 
 3. Download [Visual Studio Code (VS Code)](https://code.visualstudio.com/download).

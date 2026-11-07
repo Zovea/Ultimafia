@@ -27,7 +27,7 @@ If you have any questions or concerns please feel free to ask in our [Discord se
 
 Before building your developer environment locally, you will need the following set up:
 
-- Git, Node.js 22.17.0, and Docker Desktop (see the [Local Setup Guide](/docs/setup-local-guide.md))
+- Git, Node.js 22.23.4, and Docker Desktop (see the [Local Setup Guide](/docs/setup-local-guide.md))
 - Firebase
 
 ### Install and Build
@@ -54,9 +54,9 @@ If you want to perform your setup manually, follow these setups:
    ```bash
    $ curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
    $ source ~/nvm/nvm.sh
-   $ nvm install 22.17.0
-   $ nvm use 22.17.0
-   $ nvm alias default 22.17.0
+   $ nvm install 22.23.4
+   $ nvm use 22.23.4
+   $ nvm alias default 22.23.4
    $ npm install
    ```
 

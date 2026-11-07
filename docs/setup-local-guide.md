@@ -19,7 +19,7 @@ Install these three things. Restart your computer after installing if the instal
 | What | Why | Where to get it |
 |------|-----|-----------------|
 | **Git** | Downloads the project code | [git-scm.com](https://git-scm.com/downloads) |
-| **Node.js 22.17.0** | Runs JavaScript tools the project expects | [nodejs.org](https://nodejs.org/) (pick the **22.x** LTS / Current build closest to **22.17.0**) or [nvm-windows](https://github.com/coreybutler/nvm-windows) / [nvm](https://github.com/nvm-sh/nvm) |
+| **Node.js 22.23.4** | Runs JavaScript tools the project expects | [nodejs.org](https://nodejs.org/) (pick the **22.x** LTS / Current build closest to **22.23.4**) or [nvm-windows](https://github.com/coreybutler/nvm-windows) / [nvm](https://github.com/nvm-sh/nvm) |
 | **Docker Desktop** | Runs the database and the site in containers | [docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop/) |
 
 Also useful (optional but recommended):
@@ -44,7 +44,7 @@ docker --version
 docker compose version
 ```
 
-`node -v` should show something like `v22.17.0` (or another `v22.x`).
+`node -v` should show something like `v22.23.4` (or another `v22.x`).
 
 **Docker Desktop must be running** before you start the site. On Windows/Mac, open the Docker Desktop app and wait until it says it is running.
 

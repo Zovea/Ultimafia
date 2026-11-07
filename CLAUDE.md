@@ -4,7 +4,7 @@ Web-based chat mafia game platform (ultimafia.com). Node.js backend with React f
 
 ## Tech Stack
 
-- **Backend:** Node.js 22.17.0, Express, PM2 (3 processes: games, www, chat)
+- **Backend:** Node.js 22.23.4, Express, PM2 (3 processes: games, www, chat)
 - **Frontend:** React 17, Rsbuild, Material-UI, D3.js (in `react_main/`)
 - **Database:** MongoDB 8.0 (Mongoose ODM), Redis 8.0 (sessions, game state, pub/sub)
 - **Auth:** Firebase Auth + Passport.js (Discord, Google, Twitch, Steam)
@@ -38,7 +38,7 @@ docs/                   # Setup guides, role creation guide, game mechanics docs
 ## Development Setup
 
 ### Prerequisites
-- Node.js 22.17.0 (via nvm)
+- Node.js 22.23.4 (via nvm)
 - Docker Desktop running
 
 ### Quick Start
