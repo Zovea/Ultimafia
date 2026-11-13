@@ -154,13 +154,18 @@ router.post("/", async function (req, res) {
       form.maxFileSize = 5 * 1024 * 1024;
       form.maxFields = 2;
       form.maxFieldsSize = 8192;
-      // maxFields does not cap multipart file parts. Accept one, named image;
-      // any other is an error, after which no further part is handled.
+      // Formidable 1.x applies maxFields only to URL-encoded forms. Cap
+      // multipart text fields here too, and accept one file named image.
       // Formidable still passes on parts already received after an error, and
       // would open files it no longer closes, so handle none once it is set.
+      let fieldParts = 0;
       let fileParts = 0;
       form.onPart = (part) => {
         if (form.error) return;
+        if (part.filename === undefined && ++fieldParts > form.maxFields) {
+          form._error(new Error("Too many text fields."));
+          return;
+        }
         if (
           part.filename !== undefined &&
           (part.name !== "image" || ++fileParts > 1)
@@ -174,6 +179,12 @@ router.post("/", async function (req, res) {
       // on parser errors. Our cleanup tolerates files it has already removed.
       form.on("fileBegin", (name, file) => temporaryFiles.push(file));
       try {
+        // Formidable 1.x selects these parsers by searching the entire header,
+        // including a multipart boundary. Reject that ambiguity before parsing,
+        // rather than overriding its private parser selection methods.
+        if (/octet-stream|urlencoded/i.test(req.headers["content-type"])) {
+          throw new Error("Expected an unambiguous multipart form.");
+        }
         let files;
         [fields, files] = await form.parseAsync(req);
         imageFile = files.image;
