@@ -2574,8 +2574,7 @@ router.post("/unlinkAccounts", async (req, res) => {
 
     if (removed.ips.length === 0 && removed.fingerprintCount === 0) {
       res.send({
-        removedIpCount: 0,
-        removedFingerprintCount: 0,
+        removed: [],
         message:
           "No shared login evidence to remove; accounts were not directly linked.",
       });
@@ -2584,10 +2583,8 @@ router.post("/unlinkAccounts", async (req, res) => {
 
     routeUtils.createModAction(modId, "Unlink Accounts", [userId1, userId2]);
     res.send({
-      removedIpCount: removed.ips.length,
+      removed: removed.ips,
       removedFingerprintCount: removed.fingerprintCount,
-      // Cached clients can show the result without receiving login identifiers.
-      message: `Removed ${removed.ips.length} shared IP address(es) and ${removed.fingerprintCount} shared device-link record(s) from both users.`,
     });
   } catch (e) {
     logger.error(e);
