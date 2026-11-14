@@ -38,7 +38,7 @@ module.exports = class MafiaGame extends Game {
       this.BaseDayLength = this.getFixedDayLength() * 1000 * 60;
     }
     if (this.getFixedNightLength() > 0) {
-      this.BaseDayLength = this.getFixedDayLength() * 1000 * 60;
+      this.BaseNightLength = this.getFixedNightLength() * 1000 * 60;
     }
     this.states = [
       {
