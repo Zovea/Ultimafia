@@ -1341,6 +1341,8 @@ async function joinGame(userId, gameId) {
 
   await client.saddAsync(`game:${gameId}:players`, userId);
   await client.setAsync(`user:${userId}:game`, gameId);
+  // Game bans start with the game, so one here was left by a failed cleanup.
+  await models.Ban.deleteMany({ userId, type: "gameAuto" }).exec();
   await cacheUserPermissions(userId);
 }
 
@@ -1387,9 +1389,15 @@ async function removeGameBans(records) {
     id: { $in: records.map((record) => record.id) },
     type: "gameAuto",
   }).exec();
+  let cacheError;
   for (const record of records) {
-    await cacheUserPermissions(record.userId);
+    try {
+      await cacheUserPermissions(record.userId);
+    } catch (err) {
+      cacheError = cacheError || err;
+    }
   }
+  if (cacheError) throw cacheError;
 }
 
 async function leaveGame(userId) {
@@ -1646,7 +1654,8 @@ async function cacheUserPermissions(userId) {
 
   for (let ban of bans) for (let perm of ban.permissions) delete perms[perm];
 
-  client.set(permKey, JSON.stringify(perms));
+  // Awaited so roles are never dealt before a game ban reaches the cache.
+  await client.setAsync(permKey, JSON.stringify(perms));
   client.expire(permKey, 3600);
 
   client.set(rankKey, maxRank);

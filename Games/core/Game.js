@@ -2263,6 +2263,8 @@ module.exports = class Game {
     this.isReadyCheckActive = false;
     this.readyPlayers = {};
     this.sendReadyCheckCancel();
+    // start() cleared this; without it the lobby would never close.
+    if (!this.timers["pregameWait"]) this.startHostingTimer();
 
     if (this.pregame) {
       for (let spectator of this.spectators) {
