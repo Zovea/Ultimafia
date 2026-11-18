@@ -40,10 +40,10 @@ async function getDmAccess(userId) {
   return { locked: true, gameId, message: DM_LOCKED_MESSAGE };
 }
 
-// Joining a ranked/competitive game adds a "gameAuto" ban that removes
-// privateChat from the moment the user takes a seat. For DMs that lock is
-// replaced by getDmAccess, so privateChat counts as granted when the only
-// thing removing it is a gameAuto ban. Real bans still apply.
+// Starting a ranked/competitive game adds a "gameAuto" ban that removes
+// privateChat. For DMs that lock is replaced by getDmAccess, so privateChat
+// counts as granted when the only thing removing it is a gameAuto ban.
+// Real bans still apply.
 async function hasPrivateChat(userId, permInfo) {
   if (permInfo && permInfo.perms && permInfo.perms.privateChat) return true;
   const bans = await models.Ban.find({

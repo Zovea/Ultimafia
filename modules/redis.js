@@ -1333,7 +1333,7 @@ async function createGame(gameId, info) {
   }
 }
 
-async function joinGame(userId, gameId, ranked, competitive) {
+async function joinGame(userId, gameId) {
   const currentGame = await client.getAsync(`user:${userId}:game`);
 
   if (currentGame == gameId) return;
@@ -1341,45 +1341,55 @@ async function joinGame(userId, gameId, ranked, competitive) {
 
   await client.saddAsync(`game:${gameId}:players`, userId);
   await client.setAsync(`user:${userId}:game`, gameId);
-
-  if (ranked) {
-    var ban = new models.Ban({
-      id: shortid.generate(),
-      userId,
-      modId: null,
-      expires: 0,
-      permissions: [
-        "createThread",
-        "postReply",
-        "editPost",
-        "publicChat",
-        "privateChat",
-      ],
-      type: "gameAuto",
-      auto: true,
-    });
-    await ban.save();
-  }
-
-  if (competitive) {
-    var ban = new models.Ban({
-      id: shortid.generate(),
-      userId,
-      modId: null,
-      expires: 0,
-      permissions: [
-        "createThread",
-        "postReply",
-        "editPost",
-        "publicChat",
-        "privateChat",
-      ],
-      type: "gameAuto",
-      auto: true,
-    });
-    await ban.save();
-  }
   await cacheUserPermissions(userId);
+}
+
+async function addGameBans(userIds) {
+  const bans = userIds.map(
+    (userId) =>
+      new models.Ban({
+        id: shortid.generate(),
+        userId,
+        modId: null,
+        expires: 0,
+        permissions: [
+          "createThread",
+          "postReply",
+          "editPost",
+          "publicChat",
+          "privateChat",
+        ],
+        type: "gameAuto",
+        auto: true,
+      })
+  );
+  const records = bans.map((ban) => ({ id: ban.id, userId: ban.userId }));
+
+  try {
+    for (const ban of bans) {
+      await ban.save();
+      await cacheUserPermissions(ban.userId);
+    }
+  } catch (err) {
+    try {
+      await removeGameBans(records);
+    } catch (cleanupError) {
+      console.error("Failed to remove game bans after a failed start:", cleanupError);
+    }
+    throw err;
+  }
+
+  return records;
+}
+
+async function removeGameBans(records) {
+  await models.Ban.deleteMany({
+    id: { $in: records.map((record) => record.id) },
+    type: "gameAuto",
+  }).exec();
+  for (const record of records) {
+    await cacheUserPermissions(record.userId);
+  }
 }
 
 async function leaveGame(userId) {
@@ -1777,6 +1787,8 @@ module.exports = {
   getOpenGameCountsByLobby,
   createGame,
   joinGame,
+  addGameBans,
+  removeGameBans,
   leaveGame,
   reserveGame,
   unreserveGame,

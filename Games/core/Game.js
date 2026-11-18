@@ -260,12 +260,7 @@ module.exports = class Game {
       });
 
       if (!this.scheduled) {
-        await redis.joinGame(
-          this.hostId,
-          this.id,
-          this.ranked,
-          this.competitive
-        );
+        await redis.joinGame(this.hostId, this.id);
         this.startHostingTimer();
         if (this.tutorialSettings) await this.initTutorial();
       } else {
@@ -913,6 +908,7 @@ module.exports = class Game {
     try {
       if (
         this.currentState != -1 ||
+        this.starting ||
         this.players.length >= this.setup.total ||
         this.banned[user.id]
       ) {
@@ -927,7 +923,7 @@ module.exports = class Game {
       );
       if (alreadySeated.length) return null;
 
-      await redis.joinGame(user.id, this.id, this.ranked, this.competitive);
+      await redis.joinGame(user.id, this.id);
 
       player = new this.Player(user, this, isBot);
       player.init();
@@ -2249,7 +2245,9 @@ module.exports = class Game {
   // start() found fewer players than the setup needs. Back to pregame with
   // the seat open: hearts charged for this start are returned, the ready
   // check is cleared and pregame spectators can talk in Pregame again.
-  async abortStart() {
+  async abortStart(
+    alertText = "A seat opened before the game could start, so the start was cancelled. The game will start when the table is full again."
+  ) {
     logger.warn(
       `Game ${this.id}: start cancelled with ${this.players.length} of ${
         this.setup && this.setup.total
@@ -2258,6 +2256,7 @@ module.exports = class Game {
     this.starting = false;
     this.startTime = null;
     await this.refundHeartsChargedAtStart();
+    if (games[this.id] !== this) return;
     redis.setGameStatus(this.id, "Open");
 
     this.clearTimer("pregameCountdown");
@@ -2273,9 +2272,7 @@ module.exports = class Game {
       }
     }
 
-    this.sendAlert(
-      "A seat opened before the game could start, so the start was cancelled. The game will start when the table is full again."
-    );
+    this.sendAlert(alertText);
   }
 
   // Undoes chargeHeartsAtStart for a start that did not happen.
@@ -2408,6 +2405,41 @@ module.exports = class Game {
     if (!this.tableIsFull()) {
       await this.abortStart();
       return;
+    }
+
+    if (this.ranked || this.competitive) {
+      let bans;
+      let banError;
+      try {
+        const userIds = this.players
+          .filter((player) => !player.isBot)
+          .map((player) => player.userId || player.user.id);
+        bans = await redis.addGameBans(userIds);
+      } catch (err) {
+        banError = err;
+        logger.error(err);
+      }
+
+      // No player can seat while starting, so a departure leaves a short table.
+      if (banError || !this.tableIsFull()) {
+        if (bans) {
+          try {
+            await redis.removeGameBans(bans);
+          } catch (err) {
+            logger.error(err);
+          }
+        }
+        try {
+          await this.abortStart(
+            banError
+              ? "A server error stopped the game from starting. The start was cancelled."
+              : undefined
+          );
+        } catch (err) {
+          logger.error(err);
+        }
+        return;
+      }
     }
 
     // Tell clients the game started, assign roles, and move to the next state
