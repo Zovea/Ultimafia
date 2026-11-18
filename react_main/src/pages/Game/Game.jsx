@@ -980,7 +980,14 @@ export default function Game(props) {
 
   useEffect(() => {
     if (stateViewing == null) updateStateViewing({ type: "current" });
-  }, [history.currentState]);
+    if (
+      !review &&
+      sessionIdentityValid &&
+      (history.currentState === -1 || history.currentState === 0)
+    ) {
+      user.refreshGameMembership();
+    }
+  }, [history.currentState, review, sessionIdentityValid, user.refreshGameMembership]);
 
   useEffect(() => {
     playersRef.current = players;
