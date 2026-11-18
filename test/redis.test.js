@@ -2,6 +2,7 @@ const chai = require("chai"),
   should = chai.should();
 const db = require("../db/db");
 const redis = require("../modules/redis");
+const models = require("../db/models");
 
 describe("Redis", function () {
   describe("Token authentication", function () {
@@ -198,9 +199,14 @@ describe("Redis", function () {
         createTime: Date.now(),
       });
 
-      await redis.joinGame(userId, gameId, false);
+      await models.Ban.deleteMany({ userId, type: "gameAuto" });
+      // The extra arguments are what callers passed when a seat wrote the ban.
+      await redis.joinGame(userId, gameId, true, true);
       var inGame = await redis.inGame(userId);
       inGame.should.equal(gameId);
+
+      var bans = await models.Ban.countDocuments({ userId, type: "gameAuto" });
+      bans.should.equal(0);
 
       inGame = await redis.inGame("testUser2");
       inGame.should.be.false;

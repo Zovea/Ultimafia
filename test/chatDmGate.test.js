@@ -98,8 +98,8 @@ describe("Chat server DM lock", function () {
       settings: { setup: "s", ranked: true, competitive: false }, createTime: Date.now(),
     });
     await redis.setGameState("gRank", status === "Open" ? "Pregame" : "Day");
-    // Same as a real join: seat + gameAuto ban that removes privateChat.
-    await redis.joinGame(userId, "gRank", true, false);
+    // Same as a real join: a seat, no ban until the game starts.
+    await redis.joinGame(userId, "gRank");
   }
 
   let a, a2, b, channelId;
@@ -129,6 +129,8 @@ describe("Chat server DM lock", function () {
   });
 
   it("locks reading and sending once the ranked game is in progress", async function () {
+    // Same as a real start: a gameAuto ban that removes privateChat.
+    await redis.addGameBans(["dmA"]);
     await redis.setGameStatus("gRank", "In Progress");
     a.clear(); b.clear();
     await a.say("should not arrive");
