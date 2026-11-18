@@ -1560,10 +1560,22 @@ async function getAllLastActive() {
   return dates;
 }
 
-async function cacheUserPermissions(userId) {
-  // New key excludes legacy gameAuto restrictions from the cached base.
+async function cacheUserPermissions(userId, refresh = true) {
   const permKey = `user:${userId}:basePerms`;
   const rankKey = `user:${userId}:rank`;
+  // Never expire this generation: an old lookup must not match a reused value.
+  const generationKey = `user:${userId}:permissionsGeneration`;
+  const generation = refresh
+    ? await client.evalAsync(
+        `redis.call('incr', KEYS[1])
+         redis.call('del', KEYS[2], KEYS[3])
+         return redis.call('get', KEYS[1])`,
+        3,
+        generationKey,
+        permKey,
+        rankKey
+      )
+    : (await client.getAsync(generationKey)) || "0";
 
   var user = await models.User.findOne({ id: userId, deleted: false }).select(
     "rank permissions"
@@ -1600,11 +1612,21 @@ async function cacheUserPermissions(userId) {
 
   for (let ban of bans) for (let perm of ban.permissions) delete perms[perm];
 
-  client.set(permKey, JSON.stringify(perms));
-  client.expire(permKey, 3600);
-
-  client.set(rankKey, maxRank);
-  client.expire(rankKey, 3600);
+  // Publish both values only if no explicit refresh superseded this lookup.
+  const published = await client.evalAsync(
+    `if (redis.call('get', KEYS[1]) or '0') ~= ARGV[1] then return 0 end
+     redis.call('set', KEYS[2], ARGV[2], 'EX', 3600)
+     redis.call('set', KEYS[3], ARGV[3], 'EX', 3600)
+     return 1`,
+    3,
+    generationKey,
+    permKey,
+    rankKey,
+    generation,
+    JSON.stringify(perms),
+    maxRank
+  );
+  if (!published) return await getUserPermissions(userId);
 
   return { perms, rank: maxRank };
 }
@@ -1612,14 +1634,12 @@ async function cacheUserPermissions(userId) {
 async function getUserPermissions(userId) {
   const permKey = `user:${userId}:basePerms`;
   const rankKey = `user:${userId}:rank`;
-  const exists =
-    (await client.existsAsync(permKey)) && (await client.existsAsync(rankKey));
+  const [perms, rank] = await client.mgetAsync(permKey, rankKey);
 
   let permInfo;
-  if (!exists) permInfo = await cacheUserPermissions(userId);
+  if (perms == null || rank == null)
+    permInfo = await cacheUserPermissions(userId, false);
   else {
-    const perms = await client.getAsync(permKey);
-    const rank = await client.getAsync(rankKey);
     client.expire(permKey, 3600);
     client.expire(rankKey, 3600);
     permInfo = { perms: JSON.parse(perms), rank: Number(rank) };

@@ -20,10 +20,23 @@ function fixture() {
   const values = new Map();
   const sets = new Map();
   const bans = [];
-  let failKey;
+  let failKey, hold;
+  const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; };
   const client = {
     on() {}, select() {}, expire() {},
     async existsAsync(k) { return values.has(k); },
+    async mgetAsync(...keys) { return keys.map(k => values.get(k) ?? null); },
+    // Controlled atomic dependency semantics; this does not execute Redis Lua.
+    async evalAsync(script, n, generationKey, permKey, rankKey, ...args) {
+      assert.equal(n, 3);
+      if (script.includes("redis.call('incr'")) {
+        const generation = String(BigInt(values.get(generationKey) || "0") + 1n);
+        values.set(generationKey, generation); values.delete(permKey); values.delete(rankKey);
+        return generation;
+      }
+      if ((values.get(generationKey) || "0") !== args[0]) return 0;
+      values.set(permKey, args[1]); values.set(rankKey, String(args[2])); return 1;
+    },
     async getAsync(k) { if (k === failKey) throw Error("read outage"); return values.get(k) ?? null; },
     set(k, v) { values.set(k, v); },
     async setAsync(k, v) { values.set(k, v); },
@@ -37,7 +50,11 @@ function fixture() {
   const models = {
     User: { findOne: () => ({ select: async () => user }) },
     InGroup: { find: () => ({ populate: async () => [] }) },
-    Ban: { find: (query) => ({ select: async () => bans.filter(b => b.type !== query.type.$ne) }),
+    Ban: { find: (query) => ({ select: async () => {
+      const snapshot = bans.filter(b => b.type !== query.type.$ne);
+      if (hold) { const pending = hold; hold = null; pending.entered.resolve(); await pending.release.promise; }
+      return snapshot;
+    } }),
       deleteMany: () => ({ exec: async () => {} }) },
   };
   const gate = load("modules/dmGate.js", { "./redis": {} });
@@ -53,7 +70,8 @@ function fixture() {
     values.set("game:g:status", status); values.set("game:g:gameState", "Pregame");
     values.set("game:g:settings", JSON.stringify({ ranked, competitive }));
   }
-  return { redis, gate, client, values, sets, bans, seat, fail: k => { failKey = k; } };
+  return { redis, gate, client, values, sets, bans, seat, fail: k => { failKey = k; },
+    pause: () => { hold = { entered: deferred(), release: deferred() }; return hold; } };
 }
 
 for (const competitive of [false, true]) {
@@ -138,12 +156,17 @@ function startFixture(write) {
   const games = {};
   const alerts = [], errors = [], roles = [];
   const Game = load("Games/core/Game.js", {
-    "../games": { games }, "../../modules/redis": { setGameStatus: write },
+    "../games": { games }, "../../modules/redis": { setGameStatus: write, deleteGame: async () => {} },
+    "../../db/models": {
+      PlayerStock: { find: () => ({ lean: () => ({ exec: async () => [] }) }) },
+      User: { find: () => ({ select: () => ({ lean: () => ({ exec: async () => [] }) }) }) },
+    },
     "../../modules/logging": () => ({ error: e => errors.push(e), warn() {} }),
-    "./devControls": { withDevSeed: (_g, fn) => fn() }, "../../modules/gameEventLog": { server() {} },
+    "./devControls": { withDevSeed: (_g, fn) => fn() }, "../../modules/gameEventLog": { server() {}, close() {} },
+    "../../modules/pushNotifications": { unregisterUser() {} },
   });
   const game = Object.create(Game.prototype);
-  Object.assign(game, { id: "g", players: [], spectators: [], setup: { total: 0 }, devControls: {}, events: { emit() {} },
+  Object.assign(game, { id: "g", players: [{ user: { id: "alice" }, userId: "alice" }], spectators: [], setup: { total: 1 }, timeouts: [], devControls: {}, events: { emit() {} },
     removePregameSpectators() {}, clearTimer() {}, assignRoles() { roles.push(true); },
     captureStartingFactions() {}, broadcast() {}, broadcastOptions() {}, calculateStateOffset() {}, gotoNextState() {},
     refundHeartsChargedAtStart: async () => {}, sendReadyCheckCancel() {}, sendAlert: m => alerts.push(m),
@@ -306,4 +329,34 @@ test("refund failure remains an explicit abort-recovery limitation", async () =>
   await assert.rejects(f.game.abortStart(), /refund outage/);
   assert.equal(writes.length, 0); assert.equal(f.roles.length, 0);
   assert.equal(f.game.isReadyCheckActive, true);
+});
+
+test("a pending cold base read cannot override a refreshed real moderation ban", async () => {
+  const f = fixture(), h = f.pause(); const pending = f.redis.getUserPermissions("alice");
+  await h.entered.promise;
+  f.bans.push({ type: "moderation", userId: "alice", expires: 0, permissions: ["publicChat"] });
+  await f.redis.cacheUserPermissions("alice"); h.release.resolve();
+  assert.equal((await pending).perms.publicChat, undefined);
+  assert.equal((await f.redis.getUserPermissions("alice")).perms.publicChat, undefined);
+});
+
+test("actual cancel during a ranked charge wait prevents later role reveal", async () => {
+  let release, entered;
+  const charged = new Promise(r => { entered = r; });
+  const wait = new Promise(r => { release = r; });
+  const f = startFixture(async () => {}); f.game.ranked = true;
+  f.game.chargeHeartsAtStart = () => { entered(); return wait; };
+  const pending = f.game.start(); await charged; await f.game.cancel();
+  assert.equal(f.game.players.length, 1); release(); await pending;
+  assert.equal(f.roles.length, 0);
+});
+
+test("actual cancel during abort Open acknowledgement does not restore timer or UI", async () => {
+  let release, entered;
+  const written = new Promise(r => { entered = r; });
+  const wait = new Promise(r => { release = r; });
+  const f = startFixture(() => { entered(); return wait; }); let cleanup = 0;
+  f.game.clearTimer = () => { cleanup++; };
+  const pending = f.game.abortStart(); await written; await f.game.cancel(); release(); await pending;
+  assert.equal(cleanup, 0); assert.equal(f.alerts.length, 0);
 });

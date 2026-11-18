@@ -2262,6 +2262,7 @@ module.exports = class Game {
       statusRestored = false;
       logger.error(`Game ${this.id}: pregame status recovery failed: ${error.message}`);
     }
+    if (games[this.id] !== this) return;
 
     this.clearTimer("pregameCountdown");
     this.isReadyCheckActive = false;
@@ -2427,7 +2428,7 @@ module.exports = class Game {
 
     // Someone may have left during the waits above. Never deal roles to a
     // short table: go back to pregame instead.
-    if (!this.tableIsFull()) {
+    if (games[this.id] !== this || !this.tableIsFull()) {
       await this.abortStart();
       return;
     }
