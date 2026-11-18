@@ -214,6 +214,17 @@ export function UserProvider({
       const { data } = await axios.get("/api/user/info");
       if (request === membershipRequestRef.current) {
         setInGameState(data.id ? data.inGame || null : null);
+        setUser((currentUser) => {
+          if (
+            request !== membershipRequestRef.current ||
+            !currentUser.loggedIn ||
+            !data.id ||
+            currentUser.id !== data.id
+          ) {
+            return currentUser;
+          }
+          return { ...currentUser, perms: data.perms || {} };
+        });
       }
     } catch (_) {
       // A failed lookup is not evidence that the player left their game.

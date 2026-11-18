@@ -98,7 +98,7 @@ describe("Chat server DM lock", function () {
       settings: { setup: "s", ranked: true, competitive: false }, createTime: Date.now(),
     });
     await redis.setGameState("gRank", status === "Open" ? "Pregame" : "Day");
-    // Same as a real join: seat + gameAuto ban that removes privateChat.
+    // Same as a real join: membership only; restrictions are read live.
     await redis.joinGame(userId, "gRank", true, false);
   }
 

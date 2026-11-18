@@ -260,12 +260,7 @@ module.exports = class Game {
       });
 
       if (!this.scheduled) {
-        await redis.joinGame(
-          this.hostId,
-          this.id,
-          this.ranked,
-          this.competitive
-        );
+        await redis.joinGame(this.hostId, this.id);
         this.startHostingTimer();
         if (this.tutorialSettings) await this.initTutorial();
       } else {
@@ -913,6 +908,7 @@ module.exports = class Game {
     try {
       if (
         this.currentState != -1 ||
+        this.starting ||
         this.players.length >= this.setup.total ||
         this.banned[user.id]
       ) {
@@ -927,7 +923,7 @@ module.exports = class Game {
       );
       if (alreadySeated.length) return null;
 
-      await redis.joinGame(user.id, this.id, this.ranked, this.competitive);
+      await redis.joinGame(user.id, this.id);
 
       player = new this.Player(user, this, isBot);
       player.init();
@@ -2249,7 +2245,7 @@ module.exports = class Game {
   // start() found fewer players than the setup needs. Back to pregame with
   // the seat open: hearts charged for this start are returned, the ready
   // check is cleared and pregame spectators can talk in Pregame again.
-  async abortStart() {
+  async abortStart(message) {
     logger.warn(
       `Game ${this.id}: start cancelled with ${this.players.length} of ${
         this.setup && this.setup.total
@@ -2258,7 +2254,14 @@ module.exports = class Game {
     this.starting = false;
     this.startTime = null;
     await this.refundHeartsChargedAtStart();
-    redis.setGameStatus(this.id, "Open");
+    if (games[this.id] !== this) return;
+    let statusRestored = true;
+    try {
+      await redis.setGameStatus(this.id, "Open");
+    } catch (error) {
+      statusRestored = false;
+      logger.error(`Game ${this.id}: pregame status recovery failed: ${error.message}`);
+    }
 
     this.clearTimer("pregameCountdown");
     this.isReadyCheckActive = false;
@@ -2274,8 +2277,11 @@ module.exports = class Game {
     }
 
     this.sendAlert(
-      "A seat opened before the game could start, so the start was cancelled. The game will start when the table is full again."
+      !statusRestored
+        ? "The start was cancelled, but communication access could not be restored. Please leave and rejoin or retry the start after changing a seat or setup."
+        : message || "A seat opened before the game could start, so the start was cancelled. The game will start when the table is full again."
     );
+    return statusRestored;
   }
 
   // Undoes chargeHeartsAtStart for a start that did not happen.
@@ -2317,7 +2323,23 @@ module.exports = class Game {
     }
 
     // Set game in progress in redis db
-    redis.setGameStatus(this.id, "In Progress");
+    try {
+      await redis.setGameStatus(this.id, "In Progress");
+    } catch (error) {
+      logger.error(`Game ${this.id}: start status failed: ${error.message}`);
+      const message = "The game could not start. Please try again after changing a seat or setup.";
+      this.sendAlert(message);
+      try {
+        await this.abortStart(message);
+      } catch (abortError) {
+        logger.error(`Game ${this.id}: start recovery failed: ${abortError.message}`);
+      }
+      return;
+    }
+    if (games[this.id] !== this) {
+      this.starting = false;
+      return;
+    }
 
     // Record start time
     this.startTime = Date.now();

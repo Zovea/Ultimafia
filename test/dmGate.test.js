@@ -115,9 +115,9 @@ describe("DM gate", function () {
       expect(await redis.getDeadPlayers("g1")).to.deep.equal([]);
     });
 
-    it("treats privateChat as granted when only a gameAuto ban removed it", async function () {
+    it("does not override a missing permission using a legacy gameAuto ban", async function () {
       await models.Ban.create({ id: "b1", userId: "alice", expires: 0, permissions: ["privateChat"], type: "gameAuto", auto: true });
-      expect(await dmGate.hasPrivateChat("alice", { perms: {} })).to.equal(true);
+      expect(await dmGate.hasPrivateChat("alice", { perms: {} })).to.equal(false);
     });
 
     it("keeps real privateChat bans", async function () {

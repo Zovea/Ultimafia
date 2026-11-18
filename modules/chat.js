@@ -33,7 +33,7 @@ function leaveCurrentChannel(channelId, userId, socket) {
 async function refuseIfDmLocked(socket, userId, memberIds) {
   const access = await dmGate.getDmAccess(userId);
   if (!access.locked) return false;
-  if (memberIds && (await onlyModsBesides(memberIds, userId))) return false;
+  if (!access.unavailable && memberIds && (await onlyModsBesides(memberIds, userId))) return false;
   socket.send("dmLocked", { message: access.message, gameId: access.gameId });
   return true;
 }
@@ -294,15 +294,18 @@ async function onlyModsBesides(memberIds, userId) {
                 socket.send("error", "You are unable to use private chat.");
                 return;
               }
-            } else if (
+            }
+            if (
               !channel.public &&
               (await refuseIfDmLocked(socket, user.id, channel.memberIds))
             ) {
               return;
-            } else if (!(await utils.rateLimit(user.id, "sendChatMessage"))) {
+            }
+            if (!(await utils.rateLimit(user.id, "sendChatMessage"))) {
               socket.send("error", "You are chatting too quickly.");
               return;
-            } else if (!channel.public) {
+            }
+            if (!channel.public) {
               var blockedUsers = await redis.getBlockedUsers(user.id);
 
               for (let member of channel.members) {
@@ -407,7 +410,8 @@ async function onlyModsBesides(memberIds, userId) {
                 if (users[memberId]) {
                   users[memberId].send("newDirectChannel", {
                     channel: {
-                      ...directForClient(channel, previewOf(message)),
+                      ...directForClient(channel,
+                        (await dmGate.getDmAccess(memberId)).locked ? null : previewOf(message)),
                       lastMessageDate: Date.now(),
                     },
                     focus: false,
@@ -708,13 +712,15 @@ async function broadcastMessage(message, channel) {
     // not keep receiving it while locked.
     if (!channel.public && memberId != message.sender.id) {
       try {
+        const access = await dmGate.getDmAccess(memberId);
         if (
-          (await dmGate.getDmAccess(memberId)).locked &&
-          !(await onlyModsBesides(channel.memberIds, memberId))
+          access.locked &&
+          (access.unavailable || !(await onlyModsBesides(channel.memberIds, memberId)))
         )
           continue;
       } catch (e) {
         logger.error(e);
+        continue;
       }
     }
     if (members[memberId])
@@ -730,7 +736,7 @@ async function broadcastMessage(message, channel) {
       if (!users[member.id]) continue;
       const update = { channel: channel.id, date: message.date };
       if (!channel.public) {
-        let locked = false;
+        let locked = member.id != message.sender.id;
         if (member.id != message.sender.id) {
           try {
             locked = (await dmGate.getDmAccess(member.id)).locked;

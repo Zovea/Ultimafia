@@ -7,6 +7,7 @@ const constants = require("../data/constants");
 const Random = require("./../lib/Random");
 const utils = require("../lib/Utils");
 const dateOnly = require("../lib/dateOnly");
+const dmGate = require("./dmGate");
 
 var client = redis.createClient({
   url: process.env.REDIS_URL || "redis://redis:6379",
@@ -1333,7 +1334,7 @@ async function createGame(gameId, info) {
   }
 }
 
-async function joinGame(userId, gameId, ranked, competitive) {
+async function joinGame(userId, gameId) {
   const currentGame = await client.getAsync(`user:${userId}:game`);
 
   if (currentGame == gameId) return;
@@ -1341,45 +1342,6 @@ async function joinGame(userId, gameId, ranked, competitive) {
 
   await client.saddAsync(`game:${gameId}:players`, userId);
   await client.setAsync(`user:${userId}:game`, gameId);
-
-  if (ranked) {
-    var ban = new models.Ban({
-      id: shortid.generate(),
-      userId,
-      modId: null,
-      expires: 0,
-      permissions: [
-        "createThread",
-        "postReply",
-        "editPost",
-        "publicChat",
-        "privateChat",
-      ],
-      type: "gameAuto",
-      auto: true,
-    });
-    await ban.save();
-  }
-
-  if (competitive) {
-    var ban = new models.Ban({
-      id: shortid.generate(),
-      userId,
-      modId: null,
-      expires: 0,
-      permissions: [
-        "createThread",
-        "postReply",
-        "editPost",
-        "publicChat",
-        "privateChat",
-      ],
-      type: "gameAuto",
-      auto: true,
-    });
-    await ban.save();
-  }
-  await cacheUserPermissions(userId);
 }
 
 async function leaveGame(userId) {
@@ -1599,7 +1561,8 @@ async function getAllLastActive() {
 }
 
 async function cacheUserPermissions(userId) {
-  const permKey = `user:${userId}:perms`;
+  // New key excludes legacy gameAuto restrictions from the cached base.
+  const permKey = `user:${userId}:basePerms`;
   const rankKey = `user:${userId}:rank`;
 
   var user = await models.User.findOne({ id: userId, deleted: false }).select(
@@ -1618,6 +1581,7 @@ async function cacheUserPermissions(userId) {
 
   var bans = await models.Ban.find({
     userId: userId,
+    type: { $ne: "gameAuto" },
     $or: [{ expires: 0 }, { expires: { $gt: Date.now() } }],
   }).select("permissions");
 
@@ -1646,24 +1610,24 @@ async function cacheUserPermissions(userId) {
 }
 
 async function getUserPermissions(userId) {
-  const permKey = `user:${userId}:perms`;
+  const permKey = `user:${userId}:basePerms`;
   const rankKey = `user:${userId}:rank`;
   const exists =
     (await client.existsAsync(permKey)) && (await client.existsAsync(rankKey));
 
-  if (!exists) return await cacheUserPermissions(userId);
+  let permInfo;
+  if (!exists) permInfo = await cacheUserPermissions(userId);
   else {
     const perms = await client.getAsync(permKey);
     const rank = await client.getAsync(rankKey);
-
     client.expire(permKey, 3600);
     client.expire(rankKey, 3600);
-
-    return {
-      perms: JSON.parse(perms),
-      rank: Number(rank),
-    };
+    permInfo = { perms: JSON.parse(perms), rank: Number(rank) };
   }
+
+  const access = await dmGate.getGameCommunicationAccess(userId);
+  for (const permission of access.permissions) delete permInfo.perms[permission];
+  return permInfo;
 }
 
 async function getUserRank(userId) {
@@ -1689,7 +1653,7 @@ async function hasPermission(userId, perm, rank) {
 }
 
 async function clearPermissionCache() {
-  var keys = await client.keysAsync("user:*:perms");
+  var keys = await client.keysAsync("user:*:basePerms");
 
   for (let key of keys) await client.delAsync(key);
 }
