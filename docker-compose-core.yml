@@ -28,6 +28,10 @@ services:
     image: redis:8.0.3
     container_name: redis
     restart: unless-stopped
+    # Bind localhost like mongodb so host-side tools/tests can reach Redis
+    # without joining the compose network. App containers still use redis:6379.
+    ports:
+      - "127.0.0.1:6379:6379"
     volumes:
       - redis:/data
     networks:
