@@ -592,20 +592,20 @@ export default function MafiaGame() {
             {!isViewingPregame && setupId && strategyWindows.enabled && (
               <SideMenu
                 title={
-                  <Button
-                    fullWidth
-                    size="small"
-                    aria-label="Open guides in a floating window"
-                    endIcon={<i className="fas fa-external-link-alt" />}
-                    onClick={() =>
-                      strategyWindows.openStrategyWindow(setupId, {
-                        title: setupTitle,
-                      })
-                    }
-                    sx={{ justifyContent: "space-between", textTransform: "none" }}
-                  >
-                    Strategies
-                  </Button>
+                  <>
+                    Strategies{" "}
+                    <i
+                      className="fas fa-external-link-alt"
+                      style={{ fontSize: "0.75em", marginLeft: "4px" }}
+                    />
+                  </>
+                }
+                isAccordionMenu
+                expanded={false}
+                onChange={() =>
+                  strategyWindows.openStrategyWindow(setupId, {
+                    title: setupTitle,
+                  })
                 }
               />
             )}
