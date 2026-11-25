@@ -115,6 +115,7 @@ function MissionHistoryPanel(props) {
 }
 import { useIsPhoneDevice } from "hooks/useIsPhoneDevice";
 import { StrategiesPanel, StrategiesSection } from "components/Strategies";
+import { useStrategyWindows } from "components/strategyWindows/StrategyWindowsContext";
 import TutorialOverlay from "components/TutorialOverlay";
 
 // The guides sat in this tab during pregame. Rather than render the list twice
@@ -198,6 +199,7 @@ export default function MafiaGame() {
   const isViewingPregame = game.stateViewing === -1;
   const setupId = game.setup?.id;
   const setupTitle = game.setup?.name || "";
+  const strategyWindows = useStrategyWindows();
   const showInventory =
     game.gameType === gameType && Boolean(game.self) && isLiveState;
   const inventoryItems =
@@ -587,26 +589,23 @@ export default function MafiaGame() {
             <LastWillEntry />
             <PinnedMessages />
             <Notes />
-            {!isViewingPregame && setupId && (
+            {!isViewingPregame && setupId && strategyWindows.enabled && (
               <SideMenu
-                title="Strategies"
-                isAccordionMenu
-                contentPadding="0px"
-                content={
-                  <div
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      height: "min(40vh, 360px)",
-                    }}
+                title={
+                  <Button
+                    fullWidth
+                    size="small"
+                    aria-label="Open guides in a floating window"
+                    endIcon={<i className="fas fa-external-link-alt" />}
+                    onClick={() =>
+                      strategyWindows.openStrategyWindow(setupId, {
+                        title: setupTitle,
+                      })
+                    }
+                    sx={{ justifyContent: "space-between", textTransform: "none" }}
                   >
-                    <StrategiesSection
-                      setupId={setupId}
-                      visible
-                      title={setupTitle}
-                      variant="fill"
-                    />
-                  </div>
+                    Strategies
+                  </Button>
                 }
               />
             )}
