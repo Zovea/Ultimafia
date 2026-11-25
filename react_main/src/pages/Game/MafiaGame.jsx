@@ -587,6 +587,29 @@ export default function MafiaGame() {
             <LastWillEntry />
             <PinnedMessages />
             <Notes />
+            {!isViewingPregame && setupId && (
+              <SideMenu
+                title="Strategies"
+                isAccordionMenu
+                contentPadding="0px"
+                content={
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      height: "min(40vh, 360px)",
+                    }}
+                  >
+                    <StrategiesSection
+                      setupId={setupId}
+                      visible
+                      title={setupTitle}
+                      variant="fill"
+                    />
+                  </div>
+                }
+              />
+            )}
           </>
         }
       />
